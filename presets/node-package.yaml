@@ -1,0 +1,5 @@
+# npm/Node package.json: `"version": "1.2.3"`.
+scheme: semver
+files: ["package.json"]
+parts:
+  version: '^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)"[[:space:]]*,?[[:space:]]*$'

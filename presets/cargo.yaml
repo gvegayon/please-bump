@@ -1,0 +1,7 @@
+# Rust Cargo.toml: `version = "1.2.3"` under [package]. Matches the first
+# such line — as with pyproject.toml, a same-named key elsewhere in the file
+# would need its own type or a moved version line.
+scheme: semver
+files: ["Cargo.toml"]
+parts:
+  version: '^version[[:space:]]*=[[:space:]]*"([^"]+)"[[:space:]]*$'

@@ -1,0 +1,109 @@
+name: please-bump
+description: >-
+  Fails a pull request that does not bump the software's version. Versions
+  are pulled from one or more files via regex or built-in presets (R,
+  Python, C++, CMake, Node, Rust), support monorepos via per-group paths,
+  and can require multiple files to bump consistently. Posts a sticky PR
+  comment with the result.
+author: gvegayon
+branding:
+  icon: arrow-up-circle
+  color: green
+
+inputs:
+  config:
+    description: Path to the please-bump config file.
+    required: false
+    default: .github/please-bump.yaml
+  comment:
+    description: >-
+      Whether to post/update a sticky PR comment reporting the result.
+      Always posted (pass or fail) when true.
+    required: false
+    default: "true"
+  comment-title:
+    description: Heading used for the sticky PR comment and the step summary.
+    required: false
+    default: Version bump check
+  gh-token:
+    description: "Token used to read/post the PR comment. Needs `pull-requests: write`."
+    required: false
+    default: "${{ github.token }}"
+  fail-on-error:
+    description: >-
+      When "false", the job never fails -- it only reports. The `result`
+      output still accurately reports "pass" or "fail". A broken config
+      always fails the job regardless of this input.
+    required: false
+    default: "true"
+  base-ref:
+    description: Git ref/SHA to compare against. Defaults to the PR's base branch.
+    required: false
+    default: "${{ github.event.pull_request.base.sha }}"
+  head-ref:
+    description: Git ref/SHA to compare. Defaults to HEAD (the checked-out commit).
+    required: false
+    default: HEAD
+  working-directory:
+    description: Directory to run in, for a monorepo checked out under a subpath.
+    required: false
+    default: "."
+
+outputs:
+  result:
+    description: "'pass' or 'fail'."
+    value: ${{ steps.run.outputs.result }}
+  versions:
+    description: >-
+      JSON object mapping each group name to
+      {base_version, head_version, bump, status}.
+    value: ${{ steps.run.outputs.versions }}
+  report:
+    description: Path to the rendered Markdown report.
+    value: ${{ steps.run.outputs.report }}
+  json:
+    description: Path to the raw JSON results.
+    value: ${{ steps.run.outputs.json }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check this is a pull request
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' }}
+      shell: bash
+      run: |
+        echo "please-bump must run on a pull_request (or pull_request_target) event." >&2
+        echo "See https://github.com/gvegayon/please-bump for usage." >&2
+        exit 1
+
+    - name: Fetch the base ref
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if ! git rev-parse --verify -q "${{ inputs.base-ref }}^{commit}" > /dev/null 2>&1; then
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}" || true
+        fi
+
+    - name: Run please-bump
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PLEASE_BUMP_CONFIG: ${{ inputs.config }}
+        PLEASE_BUMP_PRESETS_DIR: ${{ github.action_path }}/presets
+        PLEASE_BUMP_BASE_REF: ${{ inputs.base-ref }}
+        PLEASE_BUMP_HEAD_REF: ${{ inputs.head-ref }}
+        PLEASE_BUMP_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        PLEASE_BUMP_COMMENT_TITLE: ${{ inputs.comment-title }}
+      run: bash "${{ github.action_path }}/src/run-action.sh"
+
+    - name: Post sticky PR comment
+      if: ${{ always() && inputs.comment == 'true' && github.event.pull_request.number != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        PLEASE_BUMP_JSON: ${{ steps.run.outputs.json }}
+        PLEASE_BUMP_REPOSITORY: ${{ github.repository }}
+        PLEASE_BUMP_PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: bash "${{ github.action_path }}/src/comment.sh" "${{ inputs.comment-title }}"

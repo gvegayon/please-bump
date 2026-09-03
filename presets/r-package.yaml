@@ -1,0 +1,5 @@
+# R package DESCRIPTION file: `Version: 1.2.3` (dot- or dash-separated).
+scheme: r
+files: ["DESCRIPTION"]
+parts:
+  version: '^Version:[[:space:]]*([0-9][0-9.-]*)[[:space:]]*$'

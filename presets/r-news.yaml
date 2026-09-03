@@ -1,0 +1,10 @@
+# R package NEWS.md, matching the plain heading style
+# `usethis::use_version()` produces: the top heading is exactly
+# "# 1.2.3" (optionally with the R-devel ".9000" suffix).
+# A project whose NEWS.md repeats the package name in the heading
+# (e.g. "# mypkg 1.2.3") needs its own `types:` entry instead — see the
+# README's "writing your own type" section.
+scheme: r
+files: ["NEWS.md"]
+parts:
+  version: '^#[[:space:]]+([0-9]+\.[0-9]+(\.[0-9]+)?(\.[0-9]+)?)[[:space:]]*$'

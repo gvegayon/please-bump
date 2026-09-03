@@ -1,0 +1,14 @@
+# The idiomatic C/C++ pattern of three separate MAJOR/MINOR/PATCH macros,
+# assembled into one semver string. Matches e.g.:
+#   #define MYLIB_VERSION_MAJOR 1
+#   #define MYLIB_VERSION_MINOR 4
+#   #define MYLIB_VERSION_PATCH 0
+# and equally `static constexpr int kVersionMajor = 1;` style declarations,
+# since the regex only looks for the token + trailing digits.
+scheme: numeric
+part-labels: [major, minor, patch]
+parts:
+  major: '[Vv][Ee][Rr][Ss][Ii][Oo][Nn][-_]?[Mm][Aa][Jj][Oo][Rr][^0-9]*([0-9]+)'
+  minor: '[Vv][Ee][Rr][Ss][Ii][Oo][Nn][-_]?[Mm][Ii][Nn][Oo][Rr][^0-9]*([0-9]+)'
+  patch: '[Vv][Ee][Rr][Ss][Ii][Oo][Nn][-_]?[Pp][Aa][Tt][Cc][Hh][^0-9]*([0-9]+)'
+assemble: "{major}.{minor}.{patch}"

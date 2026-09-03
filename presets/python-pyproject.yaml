@@ -1,0 +1,8 @@
+# PEP 621 pyproject.toml: `version = "1.2.3"` under [project]. Matches the
+# first such line in the file — if a dependency pin elsewhere in the file
+# also has a bare `version = "..."` key (unusual, but TOML allows it), move
+# your project's version above it or write a stricter custom regex.
+scheme: pep440
+files: ["pyproject.toml"]
+parts:
+  version: '^version[[:space:]]*=[[:space:]]*"([^"]+)"[[:space:]]*$'

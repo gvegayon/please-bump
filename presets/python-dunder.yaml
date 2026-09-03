@@ -1,0 +1,9 @@
+# The common `__version__ = "1.2.3"` convention, usually in the package's
+# top-level __init__.py or a dedicated _version.py. There is no universal
+# default path (it depends on your package's name), so a group using this
+# preset MUST supply its own `files:`, e.g.:
+#   preset: python-dunder
+#   files: [src/mypkg/__init__.py]
+scheme: pep440
+parts:
+  version: '^__version__[[:space:]]*=[[:space:]]*[''"]([^''"]+)[''"][[:space:]]*$'

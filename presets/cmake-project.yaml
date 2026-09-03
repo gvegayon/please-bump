@@ -1,0 +1,8 @@
+# CMakeLists.txt: `project(name VERSION 1.2.3 ...)`. Requires the whole
+# project() call to be on one line (the common case) — a VERSION spanning a
+# line break needs its own custom regex or a `command:` rule.
+scheme: numeric
+part-labels: [major, minor, patch]
+files: ["CMakeLists.txt"]
+parts:
+  version: '[Pp][Rr][Oo][Jj][Ee][Cc][Tt]\([^)]*[Vv][Ee][Rr][Ss][Ii][Oo][Nn][[:space:]]+([0-9]+\.[0-9]+(\.[0-9]+)?)'

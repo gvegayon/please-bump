@@ -1,0 +1,5 @@
+# setup.cfg: `version = 1.2.3` under [metadata].
+scheme: pep440
+files: ["setup.cfg"]
+parts:
+  version: '^version[[:space:]]*=[[:space:]]*([^[:space:]]+)[[:space:]]*$'

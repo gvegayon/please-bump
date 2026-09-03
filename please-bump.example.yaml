@@ -1,0 +1,61 @@
+# Example please-bump config. Copy the parts you need into
+# .github/please-bump.yaml (or point the action's `config:` input elsewhere).
+version: 1
+
+# Applied to every group unless a group (or one of its rules) overrides it.
+defaults:
+  scheme: semver          # semver | pep440 | r | numeric
+  consistency: identical  # identical | same-bump | none
+  when: changed            # changed | always
+  on-missing: skip         # a configured file that does not exist: skip | error
+  on-no-match: error       # a file that exists but no regex matched: error | skip
+  on-empty-group: error    # every file in the group was missing: error | warn | skip
+
+# Optional house-style types, resolved the same way as the built-in presets
+# in presets/*.yaml. Reference one with `preset: <name>` in a group/rule.
+types:
+  calver:
+    scheme: numeric
+    part-labels: [year, month, micro]
+    files: ["VERSION"]
+    parts:
+      version: '^([0-9]+\.[0-9]+\.[0-9]+)$'
+
+groups:
+  # --- single file, single regex ---
+  cli-tool:
+    files: [VERSION]
+    parts:
+      version: '^([0-9]+\.[0-9]+\.[0-9]+)$'
+
+  # --- an R package: DESCRIPTION and NEWS.md must both bump, and agree ---
+  my-r-package:
+    paths: |
+      r-pkg/
+      !r-pkg/tests/
+    files: [r-pkg/DESCRIPTION, r-pkg/NEWS.md]
+    preset: r-package
+    consistency: identical
+
+  # --- a Python sub-project in a monorepo, using a built-in preset ---
+  my-python-tool:
+    paths: ["python-tool/"]
+    files: [python-tool/pyproject.toml]
+    preset: python-pyproject
+
+  # --- a C++ library whose version is three separate #define's, plus a
+  #     CMakeLists.txt that must agree with it ---
+  engine:
+    paths: ["engine/"]
+    consistency: identical
+    rules:
+      - preset: cpp-semantic
+        files: [engine/include/engine/version.h]
+      - preset: cmake-project
+        files: [engine/CMakeLists.txt]
+
+  # --- a house-style CalVer group, always required regardless of what
+  #     changed, using the custom `calver` type defined above ---
+  release-manifest:
+    when: always
+    preset: calver
