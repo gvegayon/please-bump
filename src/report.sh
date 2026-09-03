@@ -85,3 +85,5 @@ report_write_summary() {
     report_render "$json" "$title" >> "$GITHUB_STEP_SUMMARY"
   fi
 }
+
+# (no-op comment added to trigger please-bump's own path-gate for this test PR)
