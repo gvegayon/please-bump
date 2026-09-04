@@ -1,0 +1,6 @@
+# R package NEWS.md using the long heading style, e.g.
+# "# Changes in mypkg version 1.2.3 (2026-07-22)".
+scheme: r
+files: ["NEWS.md"]
+parts:
+  version: '^#[[:space:]]+[Cc]hanges in [[:alnum:]._-]+ version[[:space:]]+([0-9]+([.-][0-9]+)*)([[:space:]].*)?$'

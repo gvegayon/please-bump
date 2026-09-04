@@ -162,6 +162,8 @@ entry must have exactly one capturing group.
 |---|---|---|
 | `r-package` | `r` | `DESCRIPTION`: `Version: 1.2.3` |
 | `r-news` | `r` | `NEWS.md` heading `# 1.2.3` (see the preset file for the exact convention it expects) |
+| `r-news-titled` | `r` | `NEWS.md` heading `# mypkg 1.2.3` — what `usethis::use_news_md()` produces |
+| `r-news-changes` | `r` | `NEWS.md` heading `# Changes in mypkg version 1.2.3 (2026-07-22)` |
 | `python-pyproject` | `pep440` | `pyproject.toml`: `version = "1.2.3"` |
 | `python-setupcfg` | `pep440` | `setup.cfg`: `version = 1.2.3` |
 | `python-dunder` | `pep440` | `__version__ = "1.2.3"` — needs an explicit `files:` |
