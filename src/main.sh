@@ -145,8 +145,26 @@ main_process_group() {
   fi
 
   if [ "$touched" != "true" ]; then
-    jq -nc --arg name "$name" \
-      '{name: $name, status: "skipped", message: "no changes under this group'"'"'s paths", base_version: null, head_version: null, bump: null, files: []}'
+    # Nothing to compare, but the report still reads better showing the
+    # version currently in place instead of a blank "--". Best-effort: pull
+    # it from the first rule's first file at head; leave it out entirely
+    # (rather than erroring) if that file is missing or doesn't match --
+    # this is cosmetic, not a check.
+    local skip_version=""
+    local first_rule first_file
+    first_rule="$(jq -c '.rules[0] // empty' <<< "$group_json")"
+    if [ -n "$first_rule" ]; then
+      first_file="$(jq -r '.files[0] // empty' <<< "$first_rule")"
+      if [ -n "$first_file" ]; then
+        local sparts sassemble scommand
+        sparts="$(jq -c '.parts' <<< "$first_rule")"
+        sassemble="$(jq -r '.assemble' <<< "$first_rule")"
+        scommand="$(jq -r '.command' <<< "$first_rule")"
+        skip_version="$(extract_version "$PLEASE_BUMP_HEAD_REF" "$first_file" "$sparts" "$sassemble" "$scommand" 2>/dev/null)" || skip_version=""
+      fi
+    fi
+    jq -nc --arg name "$name" --arg v "$skip_version" \
+      '{name: $name, status: "skipped", message: "no changes under this group'"'"'s paths", base_version: (($v | select(length > 0)) // null), head_version: (($v | select(length > 0)) // null), bump: null, files: []}'
     return
   fi
 
