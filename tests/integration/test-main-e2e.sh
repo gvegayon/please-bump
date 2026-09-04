@@ -24,6 +24,8 @@ _run() {
 _status() { jq -r --arg g "$1" '.groups[] | select(.name == $g) | .status' "$WORK/out.json"; }
 _bump()   { jq -r --arg g "$1" '.groups[] | select(.name == $g) | .bump'   "$WORK/out.json"; }
 _msg()    { jq -r --arg g "$1" '.groups[] | select(.name == $g) | .message' "$WORK/out.json"; }
+_base_v() { jq -r --arg g "$1" '.groups[] | select(.name == $g) | .base_version' "$WORK/out.json"; }
+_head_v() { jq -r --arg g "$1" '.groups[] | select(.name == $g) | .head_version' "$WORK/out.json"; }
 
 # ===================================================================
 # Repo 1: multi-file groups, per-file schemes, monorepo paths, mixed
@@ -61,6 +63,12 @@ groups:
         assemble: "{major}.{minor}.{patch}"
         scheme: numeric
         part-labels: [major, minor, patch]
+  library:
+    paths: ["library/"]
+    files: [library/DESCRIPTION]
+    parts:
+      version: '^Version:[[:space:]]*(.+)$'
+    scheme: r
 YAML
 
 cat > program-a/DESCRIPTION <<'D'
@@ -79,6 +87,11 @@ cat > engine/version.h <<'H'
 #define ENGINE_VERSION_MINOR 1
 #define ENGINE_VERSION_PATCH 0
 H
+mkdir -p library
+cat > library/DESCRIPTION <<'D'
+Package: library
+Version: 3.0.0
+D
 git add -A && git commit -q -m base
 R1_BASE="$(git rev-parse HEAD)"
 
@@ -98,6 +111,9 @@ assert_eq "$(_status engine)" "pass" "repo1: engine (C++ three-#define assembly)
 assert_eq "$(_bump engine)" "minor" "repo1: engine classified as a minor bump"
 assert_eq "$(_status program-b)" "fail" "repo1: program-b (touched dir, unbumped version) fails"
 assert_contains "$(_msg program-b)" "not bumped" "repo1: program-b message says not bumped"
+assert_eq "$(_status library)" "skipped" "repo1: library (untouched paths) is skipped"
+assert_eq "$(_base_v library)" "3.0.0" "repo1: skipped library still reports its current version as base_version"
+assert_eq "$(_head_v library)" "3.0.0" "repo1: skipped library still reports its current version as head_version"
 
 # ===================================================================
 # Repo 2: consistency=identical mismatch, and a package with no
