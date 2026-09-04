@@ -1,0 +1,11 @@
+# R package NEWS.md whose top heading names the package, e.g. "# mypkg 1.2.3"
+# -- what `usethis::use_news_md()` produces. Trailing text after the version
+# (a date, "(dev)") is tolerated. Only the first matching heading is read, so
+# the top entry decides. A dev heading with no version (e.g.
+# "# mypkg (development version)") does not match -- pair this with
+# `on-no-match: skip` or drop NEWS.md from the group if your package uses
+# that convention.
+scheme: r
+files: ["NEWS.md"]
+parts:
+  version: '^#[[:space:]]+[[:alnum:]._-]+[[:space:]]+([0-9]+([.-][0-9]+)*)([[:space:]].*)?$'

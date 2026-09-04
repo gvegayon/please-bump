@@ -45,6 +45,56 @@ _check r-news "NEWS.md" \
 * Initial release.' \
 "1.2.3"
 
+_check r-news-titled "NEWS.md" \
+'# mypkg 1.2.3
+
+* Initial release.' \
+"1.2.3"
+
+_check r-news-titled "NEWS.md" \
+'# mypkg 1.2-3 (2026-07-22)
+
+* Initial release.' \
+"1.2-3"
+
+# A dev heading with no version must not match r-news-titled.
+mkdir -p devcheck
+cat > devcheck/NEWS.md <<'MD'
+# mypkg (development version)
+
+* Work in progress.
+
+# mypkg 1.0.0
+
+* Initial release.
+MD
+cat > cfg-dev.yaml <<'YAML'
+version: 1
+groups:
+  g:
+    files: ["devcheck/NEWS.md"]
+    preset: r-news-titled
+YAML
+resolved="$(config_resolve cfg-dev.yaml "$PRESETS_DIR")"
+parts="$(jq -c '.groups.g.rules[0].parts' <<< "$resolved")"
+assemble="$(jq -r '.groups.g.rules[0].assemble' <<< "$resolved")"
+got="$(extract_version "$EXTRACT_WORKTREE" "devcheck/NEWS.md" "$parts" "$assemble" "")"
+assert_eq "$got" "1.0.0" "r-news-titled: skips a dev heading with no version, matches the next real heading"
+
+_check r-news-changes "NEWS.md" \
+'# Changes in mypkg version 1.2.3 (2026-07-22)
+
+## User-visible changes
+
+* Initial release.' \
+"1.2.3"
+
+_check r-news-changes "NEWS.md" \
+'# changes in mypkg version 1.2-3
+
+* Initial release.' \
+"1.2-3"
+
 _check python-pyproject "pyproject.toml" \
 '[project]
 name = "mypkg"
