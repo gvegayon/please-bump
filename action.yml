@@ -1,10 +1,5 @@
 name: please-bump
-description: >-
-  Fails a pull request that does not bump the software's version. Versions
-  are pulled from one or more files via regex or built-in presets (R,
-  Python, C++, CMake, Node, Rust), support monorepos via per-group paths,
-  and can require multiple files to bump consistently. Posts a sticky PR
-  comment with the result.
+description: Fail pull requests that forget to bump the version. R, Python, C++, Node, Rust and more; monorepo-aware; sticky PR comment.
 author: gvegayon
 branding:
   icon: arrow-up-circle
