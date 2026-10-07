@@ -42,5 +42,10 @@ assert_eq "$(pep440_classify 1.2.3+local1 1.2.3+local2)" "build-only" "local-seg
 assert_eq "$(pep440_classify 1.2.3 1.2.2)" "downgrade" "downgrade detected"
 assert_eq "$(pep440_classify 1.2.3 1.2.3alpha1)" "invalid-head" "unsupported alias spelling is invalid"
 
+assert_eq "$(pep440_is_dev 1.3.0.dev0 && echo yes || echo no)" "yes" "1.3.0.dev0 is a dev version"
+assert_eq "$(pep440_is_dev 1.3.0rc1 && echo yes || echo no)" "yes" "1.3.0rc1 is a dev version"
+assert_eq "$(pep440_is_dev 1.3.0.post1 && echo yes || echo no)" "no" "1.3.0.post1 is not a dev version"
+assert_eq "$(pep440_is_dev 1.3.0 && echo yes || echo no)" "no" "1.3.0 is not a dev version"
+
 assert_summary
 exit $?

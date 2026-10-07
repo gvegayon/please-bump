@@ -38,5 +38,10 @@ assert_eq "$(semver_classify 1.2.3-rc.1 1.2.2)" "downgrade" "rc.1 of 1.2.3 -> 1.
 assert_eq "$(semver_classify 1.2.3 abc)" "invalid-head" "non-semver head is invalid-head"
 assert_eq "$(semver_classify abc 1.2.3)" "invalid-base" "non-semver base is invalid-base"
 
+assert_eq "$(semver_is_dev 1.3.0-dev.1 && echo yes || echo no)" "yes" "1.3.0-dev.1 is a dev version"
+assert_eq "$(semver_is_dev 1.3.0-rc.1 && echo yes || echo no)" "yes" "1.3.0-rc.1 is a dev version"
+assert_eq "$(semver_is_dev 1.3.0+build.5 && echo yes || echo no)" "no" "build metadata alone is not a dev version"
+assert_eq "$(semver_is_dev 1.3.0 && echo yes || echo no)" "no" "1.3.0 is not a dev version"
+
 assert_summary
 exit $?

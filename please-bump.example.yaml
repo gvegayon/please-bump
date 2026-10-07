@@ -10,6 +10,21 @@ defaults:
   on-missing: skip         # a configured file that does not exist: skip | error
   on-no-match: error       # a file that exists but no regex matched: error | skip
   on-empty-group: error    # every file in the group was missing: error | warn | skip
+  # When may a touched group keep its version unchanged?
+  #   release: until that version has been released (the default)
+  #   dev:     while it is a dev/pre-release version (1.2.3.9000, 1.3.0.dev0, 1.3.0-rc.1)
+  #   never:   never -- every touched PR must bump
+  unchanged-policy: release
+  tag-pattern: "v?{version}"  # how release tag names map to versions
+
+# Where released versions come from: GitHub Releases (default) or git tags.
+release-source: releases
+
+# Per-PR opt-out: this label, or "[please-bump skip]" /
+# "[please-bump skip: group-a, group-b]" in the PR description.
+waiver:
+  labels: [no-version-bump]
+  marker: true
 
 # Optional house-style types, resolved the same way as the built-in presets
 # in presets/*.yaml. Reference one with `preset: <name>` in a group/rule.
@@ -48,6 +63,7 @@ groups:
   engine:
     paths: ["engine/"]
     consistency: identical
+    tag-pattern: "engine-v{version}"   # released as engine-v1.2.3 in this monorepo
     rules:
       - preset: cpp-semantic
         files: [engine/include/engine/version.h]
@@ -59,3 +75,12 @@ groups:
   release-manifest:
     when: always
     preset: calver
+
+  # --- a component that is never released on its own: an unchanged
+  #     version is fine while it's a dev version (e.g. 2.0.0-dev.3) ---
+  plugin-sdk:
+    paths: ["plugin-sdk/"]
+    files: [plugin-sdk/VERSION]
+    parts:
+      version: '^(.+)$'
+    unchanged-policy: dev

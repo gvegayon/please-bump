@@ -23,10 +23,12 @@ report_render() {
   ngroups="$(jq '.groups | length' <<< "$json")"
   i=0
   while [ "$i" -lt "$ngroups" ]; do
-    local g name status base_v head_v bump gicon label
+    local g name status base_v head_v bump reason latest gicon label
     g="$(jq -c ".groups[$i]" <<< "$json")"
     name="$(jq -r '.name' <<< "$g")"
     status="$(jq -r '.status' <<< "$g")"
+    reason="$(jq -r '.reason // ""' <<< "$g")"
+    latest="$(jq -r '.latest_release // ""' <<< "$g")"
     base_v="$(jq -r '.base_version // ""' <<< "$g")"
     head_v="$(jq -r '.head_version // ""' <<< "$g")"
     bump="$(jq -r '.bump // ""' <<< "$g")"
@@ -34,10 +36,29 @@ report_render() {
     [ -z "$head_v" ] && head_v="—"
 
     case "$status" in
-      pass) gicon="✅"; label="**${bump}** update" ;;
+      pass)
+        gicon="✅"
+        case "$reason" in
+          unreleased) label="unchanged (unreleased; latest release \`$latest\`)" ;;
+          no-release) label="unchanged (no release yet)" ;;
+          dev) label="unchanged (dev version)" ;;
+          *) label="**${bump}** update" ;;
+        esac
+        ;;
+      waived)
+        gicon="☑️"
+        case "$reason" in
+          label:*) label="waived (label \`${reason#label:}\`)" ;;
+          *) label="waived (PR marker)" ;;
+        esac
+        ;;
       fail)
         gicon="❌"
-        if [ "$bump" = "downgrade" ]; then
+        if [ "$reason" = "released" ]; then
+          label="already released"
+        elif [ "$reason" = "behind-release" ]; then
+          label="behind latest release"
+        elif [ "$bump" = "downgrade" ]; then
           label="**downgrade**"
         elif [ "$base_v" = "—" ] && [ "$head_v" = "—" ]; then
           label="no version file found"
@@ -57,15 +78,24 @@ report_render() {
 
   i=0
   while [ "$i" -lt "$ngroups" ]; do
-    local g name status message skipped_files
+    local g name status message note skipped_files
     g="$(jq -c ".groups[$i]" <<< "$json")"
     name="$(jq -r '.name' <<< "$g")"
     status="$(jq -r '.status' <<< "$g")"
     message="$(jq -r '.message // ""' <<< "$g")"
+    note="$(jq -r '.note // ""' <<< "$g")"
     skipped_files="$(jq -r '[.files[]? | select(.outcome == "skipped") | .file] | join(", ")' <<< "$g")"
 
     if { [ "$status" = "fail" ] || [ "$status" = "warn" ]; } && [ -n "$message" ]; then
       echo "**$name** — $message."
+      echo ""
+    fi
+    if [ "$status" = "waived" ] && [ -n "$message" ]; then
+      echo "**$name** — waived: $message."
+      echo ""
+    fi
+    if [ -n "$note" ]; then
+      echo "**$name** — note: $note."
       echo ""
     fi
     if [ -n "$skipped_files" ]; then

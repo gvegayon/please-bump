@@ -133,5 +133,49 @@ assert_contains "$bad_out" "mismatched-regex:" "mismatched-regex: group name pre
 missing_out="$(config_resolve "$WORK/does-not-exist.yaml" "$WORK/presets" 2>&1 1>/dev/null)"
 assert_contains "$missing_out" "config file not found" "missing config file reported clearly"
 
+# --- unchanged-policy / tag-pattern / release-source / waiver ---
+cat > "$WORK/policy.yaml" <<'YAML'
+version: 1
+defaults:
+  unchanged-policy: dev
+groups:
+  inherits:
+    files: [VERSION]
+    regex: ['^(.+)$']
+  overrides:
+    files: [VERSION]
+    regex: ['^(.+)$']
+    unchanged-policy: never
+    tag-pattern: '{group}-v{version}'
+  via-preset:
+    files: [pyproject.toml]
+    preset: python-pyproject
+    unchanged-policy: release
+YAML
+pol="$(config_resolve "$WORK/policy.yaml" "$WORK/presets")"
+assert_eq "$(jq -r '.groups.inherits.unchanged_policy' <<< "$pol")" "dev" "unchanged-policy inherits from defaults"
+assert_eq "$(jq -r '.groups.inherits.tag_pattern' <<< "$pol")" "v?{version}" "tag-pattern defaults to v?{version}"
+assert_eq "$(jq -r '.groups.overrides.unchanged_policy' <<< "$pol")" "never" "a group overrides unchanged-policy"
+assert_eq "$(jq -r '.groups.overrides.tag_pattern' <<< "$pol")" "{group}-v{version}" "a group overrides tag-pattern"
+assert_eq "$(jq -r '.groups["via-preset"].unchanged_policy' <<< "$pol")" "release" "unchanged-policy works alongside a preset"
+assert_eq "$(jq -r '.release_source' <<< "$pol")" "releases" "release-source defaults to releases"
+assert_eq "$(jq -c '.waiver' <<< "$pol")" '{"labels":["no-version-bump"],"marker":true}' "waiver defaults: no-version-bump label + marker"
+
+all_default="$(config_resolve "$WORK/config.yaml" "$WORK/presets")"
+assert_eq "$(jq -r '.groups["simple-broadcast"].unchanged_policy' <<< "$all_default")" "release" "unchanged-policy defaults to release"
+
+cat > "$WORK/bad-policy.yaml" <<'YAML'
+version: 1
+release-source: sometimes
+groups:
+  g:
+    files: [VERSION]
+    regex: ['^(.+)$']
+    unchanged-policy: maybe
+YAML
+bad_pol_out="$(config_resolve "$WORK/bad-policy.yaml" "$WORK/presets" 2>&1 1>/dev/null)"
+assert_contains "$bad_pol_out" "unknown unchanged-policy 'maybe'" "an unknown unchanged-policy is a config error"
+assert_contains "$bad_pol_out" "release-source: unknown value 'sometimes'" "an unknown release-source is a config error"
+
 assert_summary
 exit $?

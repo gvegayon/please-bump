@@ -26,9 +26,11 @@ groups:
 YAML
 echo "1.0.0" > VERSION
 git add -A && git commit -q -m base
+git tag v1.0.0
 BASE_SHA="$(git rev-parse HEAD)"
 # Touch VERSION (so the group counts as "changed") without actually
-# bumping the version on the first line -> should fail as "not bumped".
+# bumping the version on the first line. 1.0.0 is already tagged, so the
+# default unchanged-policy (release) fails it as "already released".
 { echo "1.0.0"; echo "# trailing comment, no real bump"; } > VERSION
 git add -A && git commit -q -m "touch VERSION without bumping it"
 HEAD_SHA="$(git rev-parse HEAD)"
@@ -95,6 +97,54 @@ PLEASE_BUMP_BASE_REF="$BASE_SHA" \
   bash "$RUN_ACTION_SH"
 status3=$?
 assert_ne "$status3" "0" "a broken config fails even with fail-on-error=false"
+
+# --- releases and PR labels come from the GitHub API (stubbed `gh`) ---
+# Back to the base..head pair from the top: VERSION touched, 1.0.0 unchanged.
+STUB="$WORK/stub-bin"
+mkdir -p "$STUB"
+cat > "$STUB/gh" <<'SH'
+#!/usr/bin/env bash
+[ -n "${GH_STUB_FAIL:-}" ] && exit 1
+case "$*" in
+  *releases*) printf '%s\n' "${GH_STUB_RELEASES:-}" ;;
+  *pulls*) printf '{"labels":[{"name":"%s"}],"body":""}\n' "${GH_STUB_LABEL:-}" ;;
+  *) exit 1 ;;
+esac
+SH
+chmod +x "$STUB/gh"
+
+_run_api() {
+  : > "$_out"
+  env PATH="$STUB:$PATH" \
+    GH_TOKEN="dummy" PLEASE_BUMP_REPOSITORY="o/r" PLEASE_BUMP_PR_NUMBER="7" \
+    PLEASE_BUMP_BASE_REF="$BASE_SHA" \
+    PLEASE_BUMP_HEAD_REF="$HEAD_SHA" \
+    PLEASE_BUMP_CONFIG=".github/please-bump.yaml" \
+    PLEASE_BUMP_PRESETS_DIR="$PLEASE_BUMP_ROOT/presets" \
+    PLEASE_BUMP_FAIL_ON_ERROR="true" \
+    GITHUB_OUTPUT="$_out" \
+    "$@" \
+    bash "$RUN_ACTION_SH" 2> "$WORK/api-err.log"
+}
+_versions() { sed -n '/^versions<</,/^PLEASE_BUMP_VERSIONS_EOF/p' "$_out" | sed '1d;$d'; }
+
+git checkout -q "$HEAD_SHA" -- .github/please-bump.yaml
+
+# The git tag v1.0.0 exists, but no GitHub *release* does: the API wins.
+_run_api GH_STUB_RELEASES=""
+assert_eq "$?" "0" "api: no GitHub releases -> unchanged passes (git tag ignored)"
+assert_eq "$(_versions | jq -r '.pkg.reason')" "no-release" "api: versions output carries the reason"
+
+_run_api GH_STUB_RELEASES="v1.0.0"
+assert_eq "$?" "1" "api: a GitHub release of 1.0.0 -> unchanged fails"
+
+_run_api GH_STUB_RELEASES="v1.0.0" GH_STUB_LABEL="no-version-bump" PLEASE_BUMP_PR_LABELS_JSON='[]'
+assert_eq "$?" "0" "api: a label found on the live PR waives (payload had none)"
+assert_eq "$(_versions | jq -r '.pkg.status')" "waived" "api: status is waived"
+
+_run_api GH_STUB_FAIL=1 PLEASE_BUMP_PR_LABELS_JSON='["no-version-bump"]'
+assert_eq "$?" "0" "api down: falls back to git tags and the payload's labels"
+assert_contains "$(cat "$WORK/api-err.log")" "falling back to git tags" "api down: warns about the fallback"
 
 assert_summary
 exit $?

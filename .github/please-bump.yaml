@@ -1,6 +1,9 @@
-# please-bump's own dogfooding config: any PR that touches the action's
-# implementation must bump ./VERSION.
+# please-bump's own dogfooding config: a PR that touches the action's
+# implementation must bump ./VERSION once the current version has been
+# released. This repo tags releases (v0.3.0, ...) without publishing GitHub
+# Releases, so released versions come from git tags.
 version: 1
+release-source: tags
 groups:
   please-bump:
     paths:

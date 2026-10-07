@@ -45,6 +45,100 @@ scheme_dispatch_classify() {
   esac
 }
 
+# scheme_dispatch_valid <scheme> V -> exit 0 if V parses under <scheme>
+scheme_dispatch_valid() {
+  case "$1" in
+    semver) semver_valid "$2" ;;
+    pep440) pep440_valid "$2" ;;
+    r) r_valid "$2" ;;
+    numeric) numeric_valid "$2" ;;
+    *) return 1 ;;
+  esac
+}
+
+# scheme_dispatch_is_dev <scheme> V -> exit 0 if V is a development/pre-release version
+scheme_dispatch_is_dev() {
+  case "$1" in
+    semver) semver_is_dev "$2" ;;
+    pep440) pep440_is_dev "$2" ;;
+    r) r_is_dev "$2" ;;
+    numeric) numeric_is_dev "$2" ;;
+    *) return 1 ;;
+  esac
+}
+
+# main_tag_regex <tag-pattern> <group> -> anchored ERE with exactly one
+# capture group (the version). Pattern text is literal except for the
+# placeholders {version} and {group}, and "?" (previous character optional,
+# as in the default "v?{version}").
+main_tag_regex() {
+  local re="$1" group="$2" esc_group
+  re="${re//\{version\}/__PB_VERSION__}"
+  re="${re//\{group\}/__PB_GROUP__}"
+  re="$(printf '%s' "$re" | sed -e 's/[].[(){}*+^$|\\]/\\&/g')"
+  esc_group="$(printf '%s' "$group" | sed -e 's/[].[(){}*+?^$|\\]/\\&/g')"
+  re="${re//__PB_GROUP__/$esc_group}"
+  re="${re//__PB_VERSION__/(.+)}"
+  printf '^%s$' "$re"
+}
+
+# main_released_versions <group> <scheme> <tag-pattern> -> "version<TAB>tag"
+# lines, one per entry in $MAIN_RELEASE_TAGS whose name matches the pattern
+# and whose captured version is valid under <scheme>.
+main_released_versions() {
+  local group="$1" scheme="$2" re tag v
+  re="$(main_tag_regex "$3" "$group")"
+  while IFS= read -r tag; do
+    [ -z "$tag" ] && continue
+    if [[ "$tag" =~ $re ]]; then
+      v="${BASH_REMATCH[1]}"
+      scheme_dispatch_valid "$scheme" "$v" && printf '%s\t%s\n' "$v" "$tag"
+    fi
+  done <<< "$MAIN_RELEASE_TAGS"
+}
+
+# main_waiver_reason <group> -> "label:<name>" | "marker" | "" (no waiver).
+# Reads the PR's labels/body from $PLEASE_BUMP_PR_LABELS (newline-separated)
+# and $PLEASE_BUMP_PR_BODY, and the allowed labels / marker switch from the
+# resolved config ($MAIN_WAIVER_LABELS, $MAIN_WAIVER_MARKER).
+main_waiver_reason() {
+  local group="$1" label allowed
+  while IFS= read -r label; do
+    [ -z "$label" ] && continue
+    while IFS= read -r allowed; do
+      [ -z "$allowed" ] && continue
+      if [ "$label" = "$allowed" ]; then
+        echo "label:$label"
+        return
+      fi
+    done <<< "$MAIN_WAIVER_LABELS"
+  done <<< "${PLEASE_BUMP_PR_LABELS:-}"
+
+  [ "$MAIN_WAIVER_MARKER" = "true" ] || return 0
+  local marker list item items
+  while IFS= read -r marker; do
+    [ -z "$marker" ] && continue
+    case "$marker" in
+      *:*)
+        list="${marker#*:}"
+        list="${list%]}"
+        IFS=',' read -r -a items <<< "$list"
+        for item in ${items[@]+"${items[@]}"}; do
+          item="$(printf '%s' "$item" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          if [ "$item" = "$group" ]; then
+            echo "marker"
+            return
+          fi
+        done
+        ;;
+      *)
+        echo "marker"
+        return
+        ;;
+    esac
+  done <<< "$(printf '%s\n' "${PLEASE_BUMP_PR_BODY:-}" | grep -oiE '\[please-bump skip(:[^]]*)?\]')"
+}
+
 _extract_status_name() {
   case "$1" in
     0) echo "found" ;;
@@ -128,14 +222,105 @@ main_process_file() {
 
 _not_real_bump_labels='["unchanged","downgrade","build-only","invalid-base","invalid-head","invalid-scheme"]'
 
+# main_apply_policy <group> <policy> <tag-pattern> <not-real-count> <classified-ndjson>
+# Decides a group that extracted cleanly, agreed across files, and has no
+# downgrade/invalid version: every "not real" label is unchanged/build-only.
+# Applies the group's unchanged-policy (release | dev | never), then lets a
+# PR waiver excuse a policy failure. Sets globals (the same "sets globals"
+# pattern as src/schemes/*.sh): _MP_STATUS (pass | fail | waived),
+# _MP_REASON, _MP_MESSAGE, _MP_LATEST (tag of the latest release), _MP_NOTE.
+#
+# Reasons: unreleased | no-release | dev (pass); released | behind-release |
+# not-bumped (fail, or waived); label:<name> | marker (waived).
+main_apply_policy() {
+  local group="$1" policy="$2" pattern="$3" not_real_count="$4" classified="$5"
+  _MP_STATUS="pass"; _MP_REASON=""; _MP_MESSAGE=""; _MP_LATEST=""; _MP_NOTE=""
+
+  local fail_reason="" fail_message=""
+  local fr scheme hver label released any_release="false"
+  local -a oks=()
+  while IFS= read -r fr; do
+    [ -n "$fr" ] && oks+=("$fr")
+  done <<< "$(jq -c 'select(.outcome == "ok") | {scheme, head_version, label}' "$classified")"
+
+  case "$policy" in
+    release)
+      _MP_NOTE="$MAIN_RELEASE_NOTE"
+      for fr in ${oks[@]+"${oks[@]}"}; do
+        scheme="$(jq -r '.scheme' <<< "$fr")"
+        hver="$(jq -r '.head_version' <<< "$fr")"
+        released="$(main_released_versions "$group" "$scheme" "$pattern")"
+        [ -z "$released" ] && continue
+        any_release="true"
+
+        local rv rtag latest_v="" latest_tag="" same_tag=""
+        while IFS="$(printf '\t')" read -r rv rtag; do
+          if [ -z "$latest_v" ] || [ "$(scheme_dispatch_compare "$scheme" "$rv" "$latest_v")" -gt 0 ]; then
+            latest_v="$rv"; latest_tag="$rtag"
+          fi
+          if [ -z "$same_tag" ] && [ "$(scheme_dispatch_compare "$scheme" "$hver" "$rv")" -eq 0 ]; then
+            same_tag="$rtag"
+          fi
+        done <<< "$released"
+        [ -z "$_MP_LATEST" ] && _MP_LATEST="$latest_tag"
+
+        if [ -z "$fail_reason" ] && [ -n "$same_tag" ]; then
+          fail_reason="released"
+          fail_message="$hver is already released ($same_tag); bump past it"
+        elif [ -z "$fail_reason" ] && [ "$(scheme_dispatch_compare "$scheme" "$hver" "$latest_v")" -lt 0 ]; then
+          fail_reason="behind-release"
+          fail_message="$hver is behind the latest release $latest_v ($latest_tag)"
+        fi
+      done
+      if [ -z "$fail_reason" ] && [ "$not_real_count" -gt 0 ]; then
+        if [ "$any_release" = "true" ]; then _MP_REASON="unreleased"; else _MP_REASON="no-release"; fi
+      fi
+      ;;
+    dev)
+      if [ "$not_real_count" -gt 0 ]; then
+        for fr in ${oks[@]+"${oks[@]}"}; do
+          label="$(jq -r '.label' <<< "$fr")"
+          [ "$label" = "unchanged" ] || [ "$label" = "build-only" ] || continue
+          scheme="$(jq -r '.scheme' <<< "$fr")"
+          hver="$(jq -r '.head_version' <<< "$fr")"
+          if ! scheme_dispatch_is_dev "$scheme" "$hver"; then
+            fail_reason="not-bumped"
+            fail_message="not bumped, and $hver is not a development version"
+            break
+          fi
+        done
+        [ -z "$fail_reason" ] && _MP_REASON="dev"
+      fi
+      ;;
+    *)
+      if [ "$not_real_count" -gt 0 ]; then
+        fail_reason="not-bumped"
+        fail_message="not bumped"
+      fi
+      ;;
+  esac
+
+  [ -z "$fail_reason" ] && return 0
+
+  local waiver
+  waiver="$(main_waiver_reason "$group")"
+  if [ -n "$waiver" ]; then
+    _MP_STATUS="waived"; _MP_REASON="$waiver"; _MP_MESSAGE="$fail_message"
+  else
+    _MP_STATUS="fail"; _MP_REASON="$fail_reason"; _MP_MESSAGE="$fail_message"
+  fi
+}
+
 # main_process_group <name> <group_json> <changed_files_list> -> one JSON object
 main_process_group() {
   local name="$1" group_json="$2" changed="$3"
 
-  local when consistency on_empty_group includes excludes
+  local when consistency on_empty_group policy tag_pattern includes excludes
   when="$(jq -r '.when' <<< "$group_json")"
   consistency="$(jq -r '.consistency' <<< "$group_json")"
   on_empty_group="$(jq -r '.on_empty_group' <<< "$group_json")"
+  policy="$(jq -r '.unchanged_policy' <<< "$group_json")"
+  tag_pattern="$(jq -r '.tag_pattern' <<< "$group_json")"
   includes="$(jq -r '.paths_include[]' <<< "$group_json")"
   excludes="$(jq -r '.paths_exclude[]' <<< "$group_json")"
 
@@ -219,6 +404,7 @@ main_process_group() {
   done < "$files_ndjson"
 
   local errors ok_count status="fail" bump="" base_version="" head_version="" message=""
+  local reason="" latest_release="" note=""
   errors="$(jq -s '[.[] | select(.outcome == "error")]' "$classified_ndjson")"
   ok_count="$(jq -s '[.[] | select(.outcome == "ok")] | length' "$classified_ndjson")"
 
@@ -248,11 +434,14 @@ main_process_group() {
     elif [ "$consistency" = "same-bump" ] && [ "$label_uniform" != "true" ]; then
       status="fail"
       message="files disagree: not all bumped the same way ($(jq -r 'join(", ")' <<< "$labels_list"))"
-    elif [ "$not_real_count" -gt 0 ]; then
+    elif [ "$(jq '[.[] | select(. != "unchanged" and . != "build-only")] | length' <<< "$not_real_bump")" -gt 0 ]; then
+      # A downgrade or an unparseable version: no policy or waiver excuses it.
       status="fail"
       message="not bumped"
     else
-      status="pass"
+      main_apply_policy "$name" "$policy" "$tag_pattern" "$not_real_count" "$classified_ndjson"
+      status="$_MP_STATUS"; reason="$_MP_REASON"; message="$_MP_MESSAGE"
+      latest_release="$_MP_LATEST"; note="$_MP_NOTE"
     fi
 
     base_version="$(jq -r '.[0] // "—"' <<< "$base_versions")"
@@ -267,10 +456,34 @@ main_process_group() {
     --arg base_version "$base_version" \
     --arg head_version "$head_version" \
     --arg bump "$bump" \
+    --arg reason "$reason" \
+    --arg latest_release "$latest_release" \
+    --arg note "$note" \
     --slurpfile files "$classified_ndjson" \
-    '{name: $name, status: $status, message: $message, base_version: $base_version, head_version: $head_version, bump: $bump, files: $files}'
+    '{name: $name, status: $status, message: $message, reason: (($reason | select(length > 0)) // null), latest_release: (($latest_release | select(length > 0)) // null), note: (($note | select(length > 0)) // null), base_version: $base_version, head_version: $head_version, bump: $bump, files: $files}'
 
   rm -f "$files_ndjson" "$classified_ndjson"
+}
+
+# main_load_release_tags <release-source> -> sets MAIN_RELEASE_TAGS (one tag
+# name per line) and MAIN_RELEASE_NOTE. "releases" reads the GitHub release
+# tag names run-action.sh exports in $PLEASE_BUMP_RELEASE_TAGS (set, even if
+# empty, means the API answered); otherwise -- or for "tags" -- falls back to
+# the local git tags. A checkout with no tags at all is usually a shallow
+# clone, not a project without releases, so that case gets a visible note.
+main_load_release_tags() {
+  MAIN_RELEASE_NOTE=""
+  if [ "$1" = "releases" ] && [ -n "${PLEASE_BUMP_RELEASE_TAGS+x}" ]; then
+    MAIN_RELEASE_TAGS="$PLEASE_BUMP_RELEASE_TAGS"
+    return
+  fi
+  MAIN_RELEASE_TAGS="$(git tag -l 2>/dev/null)"
+  if [ "$1" = "releases" ]; then
+    MAIN_RELEASE_NOTE="GitHub release list unavailable, used git tags instead"
+  fi
+  if [ -z "$MAIN_RELEASE_TAGS" ]; then
+    MAIN_RELEASE_NOTE="${MAIN_RELEASE_NOTE:+$MAIN_RELEASE_NOTE; }no git tags in this checkout (check out with fetch-depth: 0 if this project has releases)"
+  fi
 }
 
 main() {
@@ -285,6 +498,10 @@ main() {
 
   local changed
   changed="$(paths_changed_files "$PLEASE_BUMP_BASE_REF" "$PLEASE_BUMP_HEAD_REF")"
+
+  MAIN_WAIVER_LABELS="$(jq -r '.waiver.labels[]' <<< "$resolved")"
+  MAIN_WAIVER_MARKER="$(jq -r '.waiver.marker' <<< "$resolved")"
+  main_load_release_tags "$(jq -r '.release_source' <<< "$resolved")"
 
   local groups_ndjson names name gjson
   groups_ndjson="$(mktemp)"

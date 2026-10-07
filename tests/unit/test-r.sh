@@ -22,5 +22,10 @@ assert_eq "$(r_classify 1.2-3 1.2.3)" "unchanged" "dash/dot equivalent forms are
 assert_eq "$(r_classify 1.2.3 1.2.2)" "downgrade" "downgrade detected"
 assert_eq "$(r_classify 1.2.3 abc)" "invalid-head" "non-R-version head"
 
+assert_eq "$(r_is_dev 1.2.3.9000 && echo yes || echo no)" "yes" "1.2.3.9000 is a dev version"
+assert_eq "$(r_is_dev 1.2-3.9001 && echo yes || echo no)" "yes" "1.2-3.9001 is a dev version"
+assert_eq "$(r_is_dev 1.2.3.1 && echo yes || echo no)" "no" "1.2.3.1 is not (fourth component below 9000)"
+assert_eq "$(r_is_dev 1.2.3 && echo yes || echo no)" "no" "1.2.3 is not a dev version"
+
 assert_summary
 exit $?

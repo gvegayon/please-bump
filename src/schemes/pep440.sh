@@ -149,3 +149,10 @@ pep440_classify() {
   if [ "$rel_cmp" -eq 0 ]; then echo "release"; return; fi
   numeric_classify "$b_rel" "$h_rel" "major,minor,patch"
 }
+
+# pep440_is_dev V -> exit 0 if V is a .devN or a pre-release (aN/bN/rcN),
+# i.e. is not a final (or post) release.
+pep440_is_dev() {
+  _pep440_parse "$1" || return 1
+  [ -n "$_PV_DEV_NUM" ] || [ -n "$_PV_PRE_TYPE" ]
+}

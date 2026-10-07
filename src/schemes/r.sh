@@ -63,3 +63,12 @@ r_classify() {
   done
   echo "version"
 }
+
+# r_is_dev V -> exit 0 if V follows R's devel convention: a fourth component
+# of 9000 or more (e.g. "1.2.3.9000", "1.2-3.9001").
+r_is_dev() {
+  r_valid "$1" || return 1
+  local parts
+  IFS='.' read -r -a parts <<< "$(_r_normalize "$1")"
+  [ "${#parts[@]}" -ge 4 ] && [ "${parts[3]}" -ge 9000 ]
+}

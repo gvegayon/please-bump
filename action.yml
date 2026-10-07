@@ -26,7 +26,9 @@ inputs:
     required: false
     default: Version bump check
   gh-token:
-    description: "Token used to read/post the PR comment. Needs `pull-requests: write`."
+    description: >-
+      Token used to list releases, read the PR's labels/body, and post the PR
+      comment. Needs `contents: read` and `pull-requests: write`.
     required: false
     default: "${{ github.token }}"
   fail-on-error:
@@ -56,7 +58,7 @@ outputs:
   versions:
     description: >-
       JSON object mapping each group name to
-      {base_version, head_version, bump, status}.
+      {base_version, head_version, bump, status, reason}.
     value: ${{ steps.run.outputs.versions }}
   report:
     description: Path to the rendered Markdown report.
@@ -95,6 +97,13 @@ runs:
         PLEASE_BUMP_HEAD_REF: ${{ inputs.head-ref }}
         PLEASE_BUMP_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
         PLEASE_BUMP_COMMENT_TITLE: ${{ inputs.comment-title }}
+        # Release list and PR labels/body (for the release policy and
+        # waivers). Passed through env only, never interpolated into `run:`.
+        GH_TOKEN: ${{ inputs.gh-token }}
+        PLEASE_BUMP_REPOSITORY: ${{ github.repository }}
+        PLEASE_BUMP_PR_NUMBER: ${{ github.event.pull_request.number }}
+        PLEASE_BUMP_PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        PLEASE_BUMP_PR_BODY: ${{ github.event.pull_request.body }}
       run: bash "${{ github.action_path }}/src/run-action.sh"
 
     - name: Post sticky PR comment

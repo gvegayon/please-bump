@@ -48,6 +48,7 @@ groups:
     consistency: identical
   program-b:
     paths: ["program-b/"]
+    unchanged-policy: never
     files: [program-b/pyproject.toml]
     parts:
       version: '^version[[:space:]]*=[[:space:]]*"([^"]+)"'

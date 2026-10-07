@@ -57,8 +57,13 @@ config_resolve() {
 
   local errors
   errors="$(jq -r '
-    [ .groups | to_entries[] | .key as $g | .value.rules[]
-      | select(has("_error")) | "\($g): \(._error)" ]
+    .release_source as $rs
+    | ( if (["releases", "tags"] | index($rs)) == null
+      then ["release-source: unknown value '\''\($rs)'\'' (expected releases or tags)"]
+      else [] end )
+    + [ .groups | to_entries[] | .key as $g
+        | (.value | select(has("_error")) | "\($g): \(._error)"),
+          (.value.rules[] | select(has("_error")) | "\($g): \(._error)") ]
     | .[]
   ' <<<"$resolved")"
 
