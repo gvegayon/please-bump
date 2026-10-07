@@ -70,3 +70,8 @@ numeric_classify() {
   done
   echo "version"
 }
+
+# numeric_is_dev V -> always false: a bare N(.N)* has no development marker.
+numeric_is_dev() {
+  return 1
+}

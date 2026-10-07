@@ -3,15 +3,18 @@
 # Turns the authored YAML config (already converted to JSON) plus the merged
 # preset/type catalog into a normalized manifest:
 #
-#   { groups: { <name>: { when, consistency, on_empty_group,
+#   { release_source, waiver: { labels, marker },
+#     groups: { <name>: { when, consistency, on_empty_group,
+#                          unchanged_policy, tag_pattern,
 #                          paths_include, paths_exclude,
 #                          rules: [ { files, parts, assemble, command,
 #                                     scheme, part_labels,
 #                                     on_missing, on_no_match } ] } } }
 #
 # Any rule that could not be resolved carries an "_error" key instead of the
-# normal fields; config.sh scans the whole manifest for these afterward and
-# aborts with all of them listed, rather than failing on the first one.
+# normal fields (a group-level problem puts "_error" on the group itself);
+# config.sh scans the whole manifest for these afterward and aborts with all
+# of them listed, rather than failing on the first one.
 
 def trim: gsub("^\\s+|\\s+$"; "");
 
@@ -78,7 +81,7 @@ def raw_rules($g):
   if ($g.rules // null) != null then
     $g.rules
   elif ($g.preset // null) != null then
-    [ $g | del(.paths, .consistency, .when, .["on-empty-group"]) ]
+    [ $g | del(.paths, .consistency, .when, .["on-empty-group"], .["unchanged-policy"], .["tag-pattern"]) ]
   elif ($g.files // null) != null and ($g.regex // null) != null then
     ($g.files) as $files
     | ($g.regex) as $regexes
@@ -111,19 +114,31 @@ def resolve_group($g; $defaults; $types):
         $paths.include
       end
     ) as $effective_include
+  | (dget($g; ["unchanged-policy"]) // $defaults["unchanged-policy"] // "release") as $policy
   | {
       when: (dget($g; ["when"]) // $defaults.when // "changed"),
       consistency: (dget($g; ["consistency"]) // $defaults.consistency // "identical"),
       on_empty_group: (dget($g; ["on-empty-group"]) // $defaults["on-empty-group"] // "error"),
+      unchanged_policy: $policy,
+      tag_pattern: (dget($g; ["tag-pattern"]) // $defaults["tag-pattern"] // "v?{version}"),
       paths_include: $effective_include,
       paths_exclude: $paths.exclude,
       rules: $rules
-    };
+    }
+  | if (["release", "dev", "never"] | index($policy)) == null then
+      . + {"_error": "unknown unchanged-policy '\($policy)' (expected release, dev, or never)"}
+    else . end;
 
 . as $root
 | ($root.defaults // {}) as $defaults
 | ($root.types // {}) as $types
 | ($root.groups // {}) as $groups
+| ($root.waiver // {}) as $waiver
 | {
+    release_source: ($root["release-source"] // "releases"),
+    waiver: {
+      labels: (if $waiver | has("labels") then ($waiver.labels // []) else ["no-version-bump"] end),
+      marker: (if $waiver | has("marker") then ($waiver.marker == true) else true end)
+    },
     groups: ( $groups | with_entries(.value = resolve_group(.value; $defaults; $types)) )
   }

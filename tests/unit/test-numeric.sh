@@ -23,5 +23,7 @@ assert_eq "$(numeric_classify 1.2.3 1.2.3)" "unchanged" "no change"
 assert_eq "$(numeric_classify 1.2.3 1.2.2 major,minor,patch)" "downgrade" "downgrade detected"
 assert_eq "$(numeric_classify 1.2 1.2.3 major,minor,patch)" "patch" "shorter base pads with 0"
 
+assert_eq "$(numeric_is_dev 2026.10.1 && echo yes || echo no)" "no" "numeric versions are never dev versions"
+
 assert_summary
 exit $?

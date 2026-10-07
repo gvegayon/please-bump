@@ -122,3 +122,11 @@ semver_classify() {
   if [ -z "$h_pre" ]; then echo "release"; return; fi
   echo "prerelease"
 }
+
+# semver_is_dev V -> exit 0 if V carries a prerelease part ("1.3.0-dev.1",
+# "1.3.0-rc.1"), i.e. is not a final release.
+semver_is_dev() {
+  semver_valid "$1" || return 1
+  _semver_parse "$1"
+  [ -n "$_SV_PRE" ]
+}
